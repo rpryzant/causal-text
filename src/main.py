@@ -105,7 +105,7 @@ def get_data(args):
     """ Read in a dataset and make sure it has fields
             text, T_true, T_proxy, C_true, Y_sim
     """
-    if args.data_type == 'music':
+    if args.simulate:
         # Add columns T_true T_proxy C_true Y_sim to the data
         df = pd.read_csv(args.data, sep='\t', error_bad_lines=False)
         df['text'] = df['text'].map(lambda x: x.lower() if isinstance(x,str) else x)
@@ -120,16 +120,38 @@ def get_data(args):
             accuracy=args.acc,
             proxy_type=args.ptype,
             size=args.size)
-    elif args.data_type == 'custom':
+    else:
         # use what's given without any changes
         # (T_true, T_proxy, C_true, and Y should already be in there)
         df = pd.read_csv(args.data, sep='\t', error_bad_lines=False)
         df['text'] = df['text'].map(lambda x: x.lower() if isinstance(x,str) else x)
         df['Y_sim'] = df['Y']
-    else:
-        raise Exception('Unknown data type: %s' % args.data_type)
+        df['C_true'] = df['C']
 
     return df
+
+
+def run_label_expansion(df, args, stopwords=None, use_counts=False, single_class=False, only_zeros=True):
+    X, vocab, vectorizer = prepare_covariates(df, stopwords, args.vs, use_counts)
+    T_proxy = df['T_proxy'].to_numpy()
+
+    # label expansion via one-class learning
+    if single_class:
+        model = label_expansion.PUClassifier(
+            inner_alpha=inner_alpha,
+            outer_alpha=outer_alpha)
+
+    # use a regular regression
+    else:
+        reg = SGDClassifier(loss="log", penalty="l2", alpha=outer_alpha)
+
+    model.fit(X, T_proxy)
+    T_plus = label_expansion.expand_variable(model, X, T_proxy,
+        threshold=threshold,
+        only_zeros=only_zeros)
+    ATE_plus = util.ATE_adjusted(df.C_true, T_plus , df.Y_sim)
+
+    return ATE_plus
 
 
 def run_experiment(args):
@@ -143,13 +165,38 @@ def run_experiment(args):
 
     df = get_data(args)
 
-    unadjusted = util.ATE_unadjusted(df.T_true, df.Y_sim)
-    adjusted = util.ATE_adjusted(df.C_true, df.T_true, df.Y_sim)
+    ATE_estimates = []
 
-    unadjusted_proxy = util.ATE_unadjusted(df.T_proxy, df.Y_sim)
-    adjusted_proxy = util.ATE_adjusted(df.C_true, df.T_proxy, df.Y_sim)
+    if 'T_true' in df:
+        ATE_estimates.append(
+            ('unadj_T', util.ATE_unadjusted(df.T_true, df.Y_sim)))
+        ATE_estimates.append(
+            ('ate_T', util.ATE_adjusted(df.C_true, df.T_true, df.Y_sim))
+        )
+        ATE_estimates.append(
+            ('ate_matrix', util.ATE_matrix(df.T_true, df.T_proxy, df.C_true, df.Y_sim))
+        )
 
-    ATE_matrix = util.ATE_matrix(df.T_true, df.T_proxy, df.C_true, df.Y_sim)
+    if 'T_proxy' in df:
+        ATE_estimates.append(
+            ('unadj_T_proxy', util.ATE_unadjusted(df.T_proxy, df.Y_sim)))
+        ATE_estimates.append(
+            ('ate_T_proxy', util.ATE_adjusted(df.C_true, df.T_proxy, df.Y_sim))
+        )
+        ATE_estimates.append(
+            ('ate_T_plus_reg', run_label_expansion(df, args)
+        )
+        ATE_estimates.append(
+            ('ate_T_plus_pu', run_label_expansion(df, args, single_class=True)
+        )
+
+        # TODO HERE!!!!
+        if args.run_cb:
+            cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=Q_weight, mlm_weight=mlm_weight)
+            cbw.train(df['text'], df.C_true, df.T_proxy, df.Y_sim, epochs=3)
+            ATE_cb_Tproxy = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
+
+
 
     ATE_pu, ATE_reg, ATE_cb_Tproxy, ATE_cb_Tplus = run_parameterized_estimators(
         df=df,
@@ -197,13 +244,12 @@ if __name__ == '__main__':
     parser.add_argument('--Q_weight', type=float, help='Loss weight for the Q head in Causal Bert.')
     parser.add_argument('--mlm_weight', type=float, help='Loss weight for the mlm head in Causal Bert.')
     parser.add_argument('--run_cb', type=bool, help='Whether to run causal bert or not.')
-    parser.add_argument('--data_path', type=str, help='name of csv to slurp in. ')
-    parser.add_argument('--data_type', type=str, help='one of [music, custom]')
-    parser.add_argument('--o', type=str, help='output filename')
+    parser.add_argument('--data', type=str, help='Path to dataset')
+    parser.add_argument('--simulate', type=bool, help='Whether to simulate outcomes or not')
 
     parser.set_defaults(
         p1=0.9, # 0.88
-        p2=0.7, # 0.842
+        p2=0.6, # 0.842
         pre=-1, # 0.94
         rec=-1, # 0.98
         acc=-1,
@@ -221,10 +267,9 @@ if __name__ == '__main__':
         Q_weight=0.1,
         mlm_weight=1.0,
         run_cb=False,
-        ptype='random',
+        ptype='lex',
         data='./music.tsv',
-        data_type='music',
-        o='./out.txt'
+        simulate=True,
     )
     args = parser.parse_args()
 
