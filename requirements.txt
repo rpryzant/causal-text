@@ -1,0 +1,12 @@
+tensorflow==2.2.0
+tensorboard==2.1.1 
+tensorboardX==2.0
+sklearn
+transformers==2.4.1
+keras
+torch
+pandas
+rpy2==3.0.0
+spacy
+
+
