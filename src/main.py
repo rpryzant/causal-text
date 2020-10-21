@@ -87,11 +87,11 @@ def run_parameterized_estimators(
     ATE_reg = util.ATE_adjusted(df.C_true, T_plus_reg , df.Y_sim)
 
     if run_cb:
-        cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=Q_weight, mlm_weight=mlm_weight)
+        cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
         cbw.train(df['text'], df.C_true, df.T_proxy, df.Y_sim, epochs=3)
         ATE_cb_Tproxy = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
 
-        cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=Q_weight, mlm_weight=mlm_weight)
+        cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
         cbw.train(df['text'], df.C_true, T_plus_pu, df.Y_sim, epochs=3)
         ATE_cb_Tplus = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
 
@@ -120,6 +120,10 @@ def get_data(args):
             accuracy=args.acc,
             proxy_type=args.ptype,
             size=args.size)
+
+        # df2 = df[['text', 'Y_sim', 'C_true', 'T_proxy']]
+        # df2.to_csv('music_complete.tsv', sep='\t'); quit()
+
     else:
         # use what's given without any changes
         # (T_true, T_proxy, C_true, and Y should already be in there)
@@ -131,19 +135,20 @@ def get_data(args):
     return df
 
 
-def run_label_expansion(df, args, stopwords=None, use_counts=False, single_class=False, only_zeros=True):
+def run_label_expansion(df, args, stopwords=None, use_counts=False, single_class=False, only_zeros=True,
+        inner_alpha='optimal', outer_alpha='optimal', threshold=0.8):
     X, vocab, vectorizer = prepare_covariates(df, stopwords, args.vs, use_counts)
     T_proxy = df['T_proxy'].to_numpy()
 
-    # label expansion via one-class learning
+    #  one-class learning
     if single_class:
         model = label_expansion.PUClassifier(
             inner_alpha=inner_alpha,
             outer_alpha=outer_alpha)
 
-    # use a regular regression
+    # use a logistic regression
     else:
-        reg = SGDClassifier(loss="log", penalty="l2", alpha=outer_alpha)
+        model = SGDClassifier(loss="log", penalty="l2", alpha=outer_alpha)
 
     model.fit(X, T_proxy)
     T_plus = label_expansion.expand_variable(model, X, T_proxy,
@@ -151,7 +156,7 @@ def run_label_expansion(df, args, stopwords=None, use_counts=False, single_class
         only_zeros=only_zeros)
     ATE_plus = util.ATE_adjusted(df.C_true, T_plus , df.Y_sim)
 
-    return ATE_plus
+    return ATE_plus, T_plus
 
 
 def run_experiment(args):
@@ -181,98 +186,58 @@ def run_experiment(args):
         ATE_estimates.append(
             ('unadj_T_proxy', util.ATE_unadjusted(df.T_proxy, df.Y_sim)))
         ATE_estimates.append(
-            ('ate_T_proxy', util.ATE_adjusted(df.C_true, df.T_proxy, df.Y_sim))
-        )
-        ATE_estimates.append(
-            ('ate_T_plus_reg', run_label_expansion(df, args)
-        )
-        ATE_estimates.append(
-            ('ate_T_plus_pu', run_label_expansion(df, args, single_class=True)
-        )
+            ('ate_T_proxy', util.ATE_adjusted(df.C_true, df.T_proxy, df.Y_sim)))
 
-        # TODO HERE!!!!
+        ATE_T_plus_reg, T_plus_reg = run_label_expansion(df, args, 
+            inner_alpha=args.ina, outer_alpha=args.outa, threshold=args.thre)
+        ATE_estimates.append(('ate_T_plus_reg', ATE_T_plus_reg))
+
+        ATE_T_plus_pu, T_plus_pu = run_label_expansion(df, args, single_class=True, 
+            inner_alpha=args.ina, outer_alpha=args.outa, threshold=args.thre)
+        ATE_estimates.append(('ate_T_plus_pu', ATE_T_plus_pu))
+
         if args.run_cb:
-            cbw = CausalBert.CausalBertWrapper(g_weight=g_weight, Q_weight=Q_weight, mlm_weight=mlm_weight)
+            cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
             cbw.train(df['text'], df.C_true, df.T_proxy, df.Y_sim, epochs=3)
             ATE_cb_Tproxy = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
+            ATE_estimates.append(('ate_cb_T_proxy', ATE_T_plus_pu))
 
+            cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
+            cbw.train(df['text'], df.C_true, T_plus_pu, df.Y_sim, epochs=3)
+            ATE_cb_Tplus = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
+            ATE_estimates.append(('ate_cb_T_plus', ATE_T_plus_pu))
 
+    return dict(ATE_estimates)
 
-    ATE_pu, ATE_reg, ATE_cb_Tproxy, ATE_cb_Tplus = run_parameterized_estimators(
-        df=df,
-        vocab_size=args.vs,
-        threshold=args.thre,
-        inner_alpha=args.ina,
-        outer_alpha=args.outa, 
-        g_weight=args.g_weight, 
-        Q_weight=args.Q_weight, 
-        mlm_weight=args.mlm_weight, 
-        run_cb=args.run_cb)
-
-    return {
-        'ate_T': adjusted,
-        'ate_matrix': ATE_matrix,
-        'unadj_That': unadjusted_proxy,
-        'ate_That': adjusted_proxy,
-        'ate_T+_pu': ATE_pu,
-        'ate_T+_reg': ATE_reg,
-        'ate_That_cb': ATE_cb_Tproxy,
-        'ate_T+_cb': ATE_cb_Tplus,
-        'unadj_T': unadjusted,
-    }
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument('--p1', type=float, help='P(T* = 0 | C) in simulation (-1 to ignore)')
-    parser.add_argument('--p2', type=float, help='P(T* = 1 | C) in simulation (-1 to ignore)')
-    parser.add_argument('--ptype', type=str, help='type of T*', choices=['random', 'bert', 'lex'])
-    parser.add_argument('--acc', type=float, help='T*/T accuracy (-1 to ignore).')
-    parser.add_argument('--pre', type=float, help='Precision between T* and T (-1 to ignore)')
-    parser.add_argument('--rec', type=float, help='Recall between T* and T (-1 to ignore)')
-    parser.add_argument('--b0', type=float, help='Simulated treatment strength')
-    parser.add_argument('--b1', type=float, help='Simulated confound strength')
-    parser.add_argument('--gamma', type=float, help='Noise level in simulation')
-    parser.add_argument('--off', type=float, help='Simulated offset for T/C pre-threshold means')
-    parser.add_argument('--size', type=str, help='Sample size if you want to sub-sample the data (-1 to ignore)')
-    parser.add_argument('--vs', type=int, help='Vocab size for T+ model')
-    parser.add_argument('--ina', type=float, help='One-class regression inner alpha (regularization strength)')
-    parser.add_argument('--outa', type=float, help='One-class regression outer alpha (regularization strength)')
-    parser.add_argument('--thre', type=float, help='T+ classifier threshold')
-    parser.add_argument('--g_weight', type=float, help='Loss weight for the g head in Causal Bert.')
-    parser.add_argument('--Q_weight', type=float, help='Loss weight for the Q head in Causal Bert.')
-    parser.add_argument('--mlm_weight', type=float, help='Loss weight for the mlm head in Causal Bert.')
-    parser.add_argument('--run_cb', type=bool, help='Whether to run causal bert or not.')
-    parser.add_argument('--data', type=str, help='Path to dataset')
-    parser.add_argument('--simulate', type=bool, help='Whether to simulate outcomes or not')
+    parser.add_argument('--p1', type=float, default=0.9, help='P(T* = 0 | C) in simulation (-1 to ignore)')  #0.88
+    parser.add_argument('--p2', type=float, default=0.6, help='P(T* = 1 | C) in simulation (-1 to ignore)')  #0.842
+    parser.add_argument('--ptype', type=str, default='lex', help='type of T*', choices=['random', 'lex'])
+    parser.add_argument('--acc', type=float, default=-1, help='T*/T accuracy (-1 to ignore).')
+    parser.add_argument('--pre', type=float, default=-1, help='Precision between T* and T (-1 to ignore)')  # 0.94
+    parser.add_argument('--rec', type=float, default=-1, help='Recall between T* and T (-1 to ignore)') # 0.98
+    parser.add_argument('--b0', type=float, default=0.8, help='Simulated treatment strength') # 0.4, 0.8
+    parser.add_argument('--b1', type=float, default=4.0, help='Simulated confound strength')  # -0.4, 4.0
+    parser.add_argument('--gamma', type=float, default=1.0, help='Noise level in simulation')  # 0, 1
+    parser.add_argument('--off', type=float, default=0.9, help='Simulated offset for T/C pre-threshold means')
+    parser.add_argument('--size', type=str, default=-1, help='Sample size if you want to sub-sample the data (-1 to ignore)')
+    parser.add_argument('--vs', type=int, default=2000, help='Vocab size for T+ model')
+    parser.add_argument('--ina', type=float, default=0.00359, help='One-class regression inner alpha (regularization strength)')
+    parser.add_argument('--outa', type=float, default=0.00077, help='One-class regression outer alpha (regularization strength)')
+    parser.add_argument('--thre', type=float, default=0.22, help='T+ classifier threshold')
+    parser.add_argument('--g_weight', type=float, default=0.0, help='Loss weight for the g head in Causal Bert.')
+    parser.add_argument('--Q_weight', type=float, default=0.1, help='Loss weight for the Q head in Causal Bert.')
+    parser.add_argument('--mlm_weight', type=float, default=1.0, help='Loss weight for the mlm head in Causal Bert.')
+    parser.add_argument('--data', type=str, default='./music.tsv', help='Path to dataset')
+    parser.add_argument('--seed', type=int, default=420, help='Path to dataset')
+    parser.add_argument('--run_cb', default=False, action='store_true', help='Whether to run causal bert or not.')
+    parser.add_argument('--no-simulate', dest='simulate', default=True, action='store_false', help='Whether to simulate outcomes or not')
 
-    parser.set_defaults(
-        p1=0.9, # 0.88
-        p2=0.6, # 0.842
-        pre=-1, # 0.94
-        rec=-1, # 0.98
-        acc=-1,
-        b0=0.8, # 0.4, 0.8
-        b1=4.0, # -0.4, 0.4
-        gamma=1.0, # 0, 1
-        off=0.9,   
-        size=-1,
-        seed=420,
-        vs=2000,
-        ina=0.00359,
-        outa=0.00077,
-        thre=0.22,
-        g_weight=0.0,
-        Q_weight=0.1,
-        mlm_weight=1.0,
-        run_cb=False,
-        ptype='lex',
-        data='./music.tsv',
-        simulate=True,
-    )
     args = parser.parse_args()
-
     results = run_experiment(args)
     out = {**vars(args), **results}
     print(out)

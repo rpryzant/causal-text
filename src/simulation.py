@@ -10,7 +10,6 @@ import itertools
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, accuracy_score, f1_score
 
 import util
-import bert
 
 
 
@@ -214,14 +213,8 @@ def run_simulation(
 
     df['T_true'] = df['rating'].apply(treatment_from_rating)
 
-    # Get T* from bert predicting T
-    if proxy_type == 'bert':
-        T_proxy_bert = bert.fit_predict(df.review, df.T_true,
-            working_dir='./BERT',
-            epochs=3)
-        df['T_proxy'] = np.argmax(T_proxy_bert, axis=1)
     # Get T* from a sentiment lexicon
-    elif proxy_type == 'lex':
+    if proxy_type == 'lex':
         lex = util.read_lexicon('./positive-words.txt')
 
         def proxy_treatment_from_review(text):
@@ -229,6 +222,7 @@ def run_simulation(
             return int(len(set(text) & lex) > 0)
 
         df['T_proxy'] = df['text'].apply(proxy_treatment_from_review)
+
     # Get a randomly sampled proxy
     elif proxy_type == 'random':
         randoms = np.random.uniform(0, 1, len(df['T_true']))
@@ -240,6 +234,7 @@ def run_simulation(
             pThatGivenT = [0.2, 0.8]
         mask = np.array([pThatGivenT[ti] for ti in df['T_true']])
         df['T_proxy'] = (randoms < mask).astype(int)
+
     # get confound (lump together mp3 + vinyl)
     C_from_product = lambda p: 1 if p == 'audio cd' else 0
     df['C_true'] = df['product'].apply(C_from_product)
