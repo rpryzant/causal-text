@@ -1,5 +1,17 @@
 # causal-text
-Package for computing text-as-treatment causal effects
+This is a package for computing the causal effects of text. Concretely this means algorithms for quantifying the degree of influence some user-defiend property (E.g. sentiment, respect) has on an outcome (email reply time), while controlling for potential confounds (topic, etc). 
+
+## Quickstart
+
+Follow these commands to run the full CausalText algorithm on a simulated dataset.
+
+```
+pip install -r requirements.txt
+python main.py --run_cb
+```
+
+## Usage
+
 
 
 
