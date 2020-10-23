@@ -22,6 +22,7 @@ python main.py --run_cb
   * For `python main.py --data /path/to/your/data.tsv --no_simulate`
   * And if you want to run BERT for text adjustment (i.e. the full TextCause algorithm): 
      `python main.py --data /path/to/your/data.tsv --no_simulate --run_cb`
+  * If you want to run the simulation: `python main.py --run_cb`
 * **Look at your results.** When finished, the system will print out all of its hyperparameters and a bunch of different ATE estimates. The estimators are:
     * `unadj_T`: the unadjusted effect of T
     * `ate_T`: backdoor-adjusted effect of T
