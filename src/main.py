@@ -205,7 +205,7 @@ def run_experiment(args):
             cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
             cbw.train(df['text'], df.C_true, T_plus_pu, df.Y_sim, epochs=3)
             ATE_cb_Tplus = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
-            ATE_estimates.append(('ate_cb_T_plus', ATE_T_plus_pu))
+            ATE_estimates.append(('ate_cb_T_plus', ATE_cb_Tplus))
 
     return dict(ATE_estimates)
 
@@ -233,13 +233,31 @@ if __name__ == '__main__':
     parser.add_argument('--Q_weight', type=float, default=0.1, help='Loss weight for the Q head in Causal Bert.')
     parser.add_argument('--mlm_weight', type=float, default=1.0, help='Loss weight for the mlm head in Causal Bert.')
     parser.add_argument('--data', type=str, default='./music.tsv', help='Path to dataset')
-    parser.add_argument('--seed', type=int, default=420, help='Path to dataset')
+    parser.add_argument('--seed', type=str, default='420', help='Path to dataset')
     parser.add_argument('--run_cb', default=False, action='store_true', help='Whether to run causal bert or not.')
     parser.add_argument('--no-simulate', dest='simulate', default=True, action='store_false', help='Whether to simulate outcomes or not')
 
     args = parser.parse_args()
-    results = run_experiment(args)
-    out = {**vars(args), **results}
-    print(out)
+
+    if ',' in args.seed:
+        seeds = args.seed.split(',')
+    else:
+        seeds = [args.seed]
+
+    results = defaultdict(list)
+    for seed in seeds:
+        args.seed = int(seed)
+        result = run_experiment(args)
+        for k, v in result.items():
+            results[k] += [v]
+
+    out = {**vars(args), **{k: np.mean(v) for k, v in results.items()}}
+
+    print('Oracle:\t%.4f' % out['ate_T'])
+    print('Semi-Oracle:\t%.4f' % out['ate_matrix'])
+    print('Unadjusted:\t%.4f' % out['unadj_T_proxy'])
+    print('proxy-%s:\t%.4f' % (args.ptype, out['ate_T_proxy']))
+    print('T-boost reg:\t%.4f' % out['ate_T_plus_reg'])
+    print('T-boost pu:\t%.4f' % out['ate_T_plus_pu'])
 
     quit()
