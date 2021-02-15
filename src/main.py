@@ -200,12 +200,18 @@ def run_experiment(args):
             cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
             cbw.train(df['text'], df.C_true, df.T_proxy, df.Y_sim, epochs=3)
             ATE_cb_Tproxy = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
-            ATE_estimates.append(('ate_cb_T_proxy', ATE_T_plus_pu))
+            ATE_estimates.append(('ate_cb_T_proxy', ATE_cb_Tproxy))
 
             cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
             cbw.train(df['text'], df.C_true, T_plus_pu, df.Y_sim, epochs=3)
             ATE_cb_Tplus = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
-            ATE_estimates.append(('ate_cb_T_plus', ATE_cb_Tplus))
+            ATE_estimates.append(('ate_cb_T_plus_pu', ATE_cb_Tplus))
+
+            cbw = CausalBert.CausalBertWrapper(g_weight=args.g_weight, Q_weight=args.Q_weight, mlm_weight=args.mlm_weight)
+            cbw.train(df['text'], df.C_true, T_plus_reg, df.Y_sim, epochs=3)
+            ATE_cb_Tplus = cbw.ATE(df.C_true, df['text'], Y=df.Y_sim, platt_scaling=False)
+            ATE_estimates.append(('ate_cb_T_plus_reg', ATE_cb_Tplus))
+
 
     return dict(ATE_estimates)
 
@@ -247,6 +253,14 @@ if __name__ == '__main__':
     results = defaultdict(list)
     for seed in seeds:
         args.seed = int(seed)
+
+        args.ptype = 'random'
+        args.run_cb = False
+        result_random = run_experiment(args)
+        results['ate_T_proxy_random'].append(result_random['ate_T_proxy'])
+
+        args.ptype = 'lex'
+        args.run_cb = True
         result = run_experiment(args)
         for k, v in result.items():
             results[k] += [v]
@@ -256,8 +270,12 @@ if __name__ == '__main__':
     print('Oracle:\t%.4f' % out['ate_T'])
     print('Semi-Oracle:\t%.4f' % out['ate_matrix'])
     print('Unadjusted:\t%.4f' % out['unadj_T_proxy'])
-    print('proxy-%s:\t%.4f' % (args.ptype, out['ate_T_proxy']))
+    print('proxy-random:\t%.4f' % (args.ptype, out['ate_T_proxy_random']))
+    print('proxy-lex:\t%.4f' % (args.ptype, out['ate_T_proxy']))
     print('T-boost reg:\t%.4f' % out['ate_T_plus_reg'])
     print('T-boost pu:\t%.4f' % out['ate_T_plus_pu'])
+    print('W adjust:\t%.4f' % out['ate_cb_T_proxy'])
+    print('TextCause pu:\t%.4f' % out['ate_cb_T_plus_pu'])
+    print('TextCause reg:\t%.4f' % out['ate_cb_T_plus_reg'])
 
     quit()
