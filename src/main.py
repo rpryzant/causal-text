@@ -254,6 +254,7 @@ if __name__ == '__main__':
     for seed in seeds:
         args.seed = int(seed)
 
+        # Hack to run random + lex
         args.ptype = 'random'
         args.run_cb = False
         result_random = run_experiment(args)
