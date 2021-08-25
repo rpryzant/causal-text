@@ -14,7 +14,7 @@ Run the full TextCause algorithm on a simulated dataset.
 ```
 python main.py --run_cb 
 ```
-Run the full TextCause algorithm on your dataset:
+Run the full TextCause algorithm on a dataset of your choosing:
 ```
 python main.py --run_cb --data /path/to/your/data.tsv 
 ```
