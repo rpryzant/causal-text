@@ -1,5 +1,7 @@
 # causal-text
-This is a package for computing the causal effects of text. Concretely this means algorithms for quantifying the degree of influence some user-defiend property (E.g. sentiment, respect) has on an outcome (email reply time), while controlling for potential confounds (topic, etc). 
+This is an implementation of the paper [Causal Effects of Linguistic Properties](https://nlp.stanford.edu/pubs/pryzant2021causal.pdf).
+
+It is a package for computing the causal effects of text. Concretely this means algorithms for quantifying the degree of influence some user-defiend property (E.g. sentiment, respect) has on an outcome (email reply time), while controlling for potential confounds (topic, etc). 
 
 ## Setup
 
