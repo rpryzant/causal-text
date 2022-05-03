@@ -44,3 +44,18 @@ python main.py --run_cb --data /path/to/your/data.tsv
     * `ate_cb_T_proxy`: text-adjusted ATE estimate
     * `ate_cb_T_plus`: the full TextCause algorithm; test adjustment + T boosting.
     
+
+## Citation
+
+Please cite this paper if you make use of the repo:
+
+```
+@inproceedings{pryzant2021causal,
+ author = {Pryzant, Reid and Card, Dallas and Jurafsky, Dan and Veitch, Victor and Sridhar, Dhanya},
+ booktitle = {Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL)},
+ link = {https://nlp.stanford.edu/pubs/pryzant2021causal.pdf},
+ title = {Causal Effects of Linguistic Properties},
+ url = {https://nlp.stanford.edu/pubs/pryzant2021causal.pdf},
+ year = {2021}
+}
+```
